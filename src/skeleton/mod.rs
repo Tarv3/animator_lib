@@ -1,0 +1,103 @@
+pub mod bone;
+
+use skeleton::bone::*;
+use pose::*;
+
+#[derive(Debug)]
+pub struct Skeleton {
+    bones: Vec<Bone>,
+}
+
+impl Skeleton {
+    pub fn bones_ref(&self) -> &[Bone] {
+        self.bones.as_slice()
+    }
+
+    pub fn from_bones(bones: Vec<Bone>) -> Skeleton {
+        Skeleton {
+            bones,
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Skeleton {
+        Skeleton {
+            bones: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub fn add_bone(&mut self, bone: Bone) {
+        self.bones.push(bone);
+    }
+
+    pub fn write_matrices_to_buffer(&self, buffer: &mut [[[f32; 4]; 4]]) {
+        let len = self.bones.len();
+        for i in 0..len {
+            if i >= len {
+                break;
+            }
+            buffer[i] = self.bones[i].final_pose.unwrap().matrix().into();
+        }
+    }
+
+    pub fn write_poses_to_buffer(&self, buffer: &mut [Pose]) {
+        let len = self.bones.len();
+        for i in 0..len {
+            if i >= len {
+                break;
+            }
+            buffer[i] = self.bones[i].final_pose.unwrap();
+        }
+    }
+
+    // Will set the bindposes of all of the bones to their current transformations
+    pub fn build_inv_bindposes(&mut self) {
+        for i in 0..self.bones.len() {
+            if self.bones[i].inv_pose.is_none() {
+                let mut bone = self.bones[i];
+                bone.build_inv_pose(&mut self.bones);
+                self.bones[i] = bone;
+            }
+        }
+    }
+
+    pub fn reset_bones(&mut self) {
+        for bone in &mut self.bones {
+            bone.reset();
+        }
+    }
+
+    // Must be called after updating bone transformations
+    pub fn rebuild_poses(&mut self) -> Result<(), MissingInvBindpose> {
+        self.reset_bones();
+        for i in 0..self.bones.len() {
+            if self.bones[i].final_pose.is_some() {
+                continue;
+            }
+            let mut bone = self.bones[i];
+            bone.build_pose(&mut self.bones)?;
+            self.bones[i] = bone;
+        }
+
+        Ok(())
+    }
+
+    // Length of a1 and a2 must be equal to the length of bones
+    pub fn interp_animations(&mut self, a1: &[Pose], a2: &[Pose], t: f32) {
+        assert!(a1.len() == a2.len() && a1.len() == self.bones.len());
+
+        for (i, bone) in self.bones.iter_mut().enumerate() {
+            let pose1 = a1[i];
+            let pose2 = a2[i];
+            let new_pose = pose_interp(&pose1, &pose2, t);
+            bone.pose = new_pose;
+        }
+    }
+
+    pub fn set_poses(&mut self, poses: &[Pose]) {
+        assert!(poses.len() == self.bones.len());
+
+        for i in 0..poses.len() {
+            self.bones[i].pose = poses[i];
+        }
+    }
+}

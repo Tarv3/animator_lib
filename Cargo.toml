@@ -4,3 +4,4 @@ version = "0.1.0"
 authors = ["Josh <tarv360@gmail.com>"]
 
 [dependencies]
+nalgebra-glm = "0.1"
