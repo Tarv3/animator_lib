@@ -26,6 +26,8 @@ pub fn interpolate_poses(a: &[Pose], b: &[Pose], to: &mut [Pose], val: f32) {
     }
 }
 
+// Mixes a collection of poses with weights linearly
+// may not work as intended
 pub fn n_pose_interp(poses: &[Pose], weights: &mut [f32]) -> Pose {
     assert!(poses.len() == weights.len() && weights.len() > 1);
 
