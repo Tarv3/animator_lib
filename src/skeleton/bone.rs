@@ -38,6 +38,22 @@ impl Bone {
         &self.inv_pose
     }
 
+    pub fn get_absolute_pose(&self) -> Option<Pose> {
+        let inv_pose = self.inv_pose?;
+        let final_pose = self.final_pose?;
+
+        Some(final_pose * inv_pose.inverse())
+    }
+
+    pub fn set_base_pose(&mut self, base: Pose) -> Result<(), MissingFinalPose> {
+        match self.final_pose {
+            Some(ref mut pose) => *pose = base * *pose,
+            None => return Err(MissingFinalPose),
+        }
+
+        Ok(())
+    }
+
     // Recursively builds the bindpose pose for self and any parent bone
     // Requires there to be a connection to a root bone
     pub fn build_inv_pose(&mut self, bones: &mut [Bone]) -> Pose {
@@ -106,5 +122,20 @@ impl fmt::Display for MissingInvBindpose {
 impl error::Error for MissingInvBindpose {
     fn description(&self) -> &str {
         "Missing inverse bind pose matrix"
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MissingFinalPose;
+
+impl fmt::Display for MissingFinalPose {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Missing final pose")
+    }
+}
+
+impl error::Error for MissingFinalPose {
+    fn description(&self) -> &str {
+        "Missing final pose"
     }
 }

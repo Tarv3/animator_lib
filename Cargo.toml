@@ -5,3 +5,5 @@ authors = ["Josh <tarv360@gmail.com>"]
 
 [dependencies]
 nalgebra-glm = "0.1"
+ordered-float = "1.0.1"
+collada = "0.8.0"

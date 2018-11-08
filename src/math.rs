@@ -1,4 +1,5 @@
 use glm::*;
+use std::ops::Range;
 
 pub fn minf32(value: f32, max: f32) -> f32 {
     if value < max {
@@ -16,6 +17,15 @@ pub fn maxf32(value: f32, min: f32) -> f32 {
     else {
         min
     }
+}
+
+pub fn make_mat4_from_array(a: &[[f32; 4]; 4]) -> Mat4 {
+    mat4(
+        a[0][0], a[0][1], a[0][2], a[0][3],
+        a[1][0], a[1][1], a[1][2], a[1][3],
+        a[2][0], a[2][1], a[2][2], a[2][3],
+        a[3][0], a[3][1], a[3][2], a[3][3],
+    )
 }
 
 pub fn print_mat4(mat: &Mat4) {
@@ -54,6 +64,46 @@ pub fn separate_rot_scale(m: &Mat3) -> (Vec3, Mat3) {
         (scale, rot)
 }
 
+pub fn time_loop(mut time: f32, min: f32, max: f32) -> f32 {
+    assert!(min < max);
+
+    let length = max - min;
+    if time < min {
+        let mut amount = min - time;
+        if amount > length {
+            amount = amount % length;
+        }
+
+        time = max - amount;
+    }
+    else if time > max {
+        let mut amount = time - max;
+        if amount > length {
+            amount = amount % length;
+        }
+
+        time = min + amount;
+    }
+
+    time
+}
+
+pub fn clampf32(value: f32, min: f32, max: f32) -> f32 {
+    if value >= min && value <= max {
+        value
+    }
+    else if value < min {
+        min
+    }
+    else {
+        max
+    }
+}
+
+pub fn between(value: f32, lower: f32, upper: f32) -> bool {
+    value >= lower && value <= upper
+}
+
 #[cfg(test)]
 mod tests {
     use glm::*;
@@ -83,5 +133,17 @@ mod tests {
         assert!((scale.x - e_scale.x).abs() <= epsilon());
         assert!((scale.y - e_scale.y).abs() <= epsilon());
         assert!((scale.z - e_scale.z).abs() <= epsilon());
+    }
+
+    #[test]
+    fn range_loop() {
+        let time = 5.0;
+        let time = math::time_loop(time, 0.0, 1.0);
+
+        let time2 = -5.5;
+        let time2 = math::time_loop(time2, 0.0, 1.0);
+
+        assert!(time == 0.0);
+        assert!(time2 == 0.5);
     }
 }

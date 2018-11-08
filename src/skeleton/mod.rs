@@ -29,24 +29,27 @@ impl Skeleton {
         self.bones.push(bone);
     }
 
-    pub fn write_matrices_to_buffer(&self, buffer: &mut [[[f32; 4]; 4]]) {
+    pub fn write_matrices_to_buffer(&self, buffer: &mut [[[f32; 4]; 4]]) -> Result<(), MissingFinalPose> {
         let len = self.bones.len();
         for i in 0..len {
-            if i >= len {
+            if i >= buffer.len() {
                 break;
             }
-            buffer[i] = self.bones[i].final_pose.unwrap().matrix().into();
+            buffer[i] = self.bones[i].final_pose.ok_or(MissingFinalPose)?.matrix().into();
         }
+        Ok(())
     }
 
-    pub fn write_poses_to_buffer(&self, buffer: &mut [Pose]) {
+    pub fn write_poses_to_buffer(&self, buffer: &mut [Pose]) -> Result<(), MissingFinalPose> {
         let len = self.bones.len();
         for i in 0..len {
             if i >= len {
                 break;
             }
-            buffer[i] = self.bones[i].final_pose.unwrap();
+            buffer[i] = self.bones[i].final_pose.ok_or(MissingFinalPose)?;
         }
+
+        Ok(())
     }
 
     // Will set the bindposes of all of the bones to their current transformations
@@ -98,6 +101,20 @@ impl Skeleton {
 
         for i in 0..poses.len() {
             self.bones[i].pose = poses[i];
+        }
+    }
+
+    pub fn set_base_pose(&mut self, base: Pose) -> Result<(), MissingFinalPose> {
+        for bone in self.bones.iter_mut() {
+            bone.set_base_pose(base)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn pretty_print(&self) {
+        for (i, bone) in self.bones.iter().enumerate() {
+            println!("Bone {} = {:?}\n", i, bone);
         }
     }
 }
