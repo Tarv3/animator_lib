@@ -16,11 +16,11 @@ pub fn load_skeleton(skeleton: &collada::Skeleton) -> Skeleton {
             false => Some(joint.parent_index as usize),
         };
 
-        let inv_bindpose = make_mat4_from_array(&joint.inverse_bind_pose);
-        let inv_bindpose = Pose::from_matrix(&inv_bindpose);
-        let bone = Bone::with_inv_pose(default_pose, inv_bindpose, parent);
+        // let inv_bindpose = make_mat4_from_array(&joint.inverse_bind_pose);
+        // let inv_bindpose = Pose::from_matrix(&inv_bindpose);
+        let bone = Bone::new(default_pose, parent);
         output.add_bone(bone);
     }
-
+    output.build_inv_bindposes();
     output
 }

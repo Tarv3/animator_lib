@@ -21,6 +21,13 @@ impl Bone {
         }
     }
 
+    pub fn is_root(&self) -> bool {
+        match self.parent {
+            Some(_) => false,
+            None => true
+        }
+    }
+
     pub fn with_inv_pose(pose: Pose, inv_pose: Pose, parent: Option<usize>) -> Bone {
         Bone {
             parent,
@@ -38,11 +45,12 @@ impl Bone {
         &self.inv_pose
     }
 
-    pub fn get_absolute_pose(&self) -> Option<Pose> {
+    // Returns final * inverse pose
+    pub fn get_relative_pose(&self) -> Option<Pose> {
         let inv_pose = self.inv_pose?;
         let final_pose = self.final_pose?;
 
-        Some(final_pose * inv_pose.inverse())
+        Some(final_pose * inv_pose)
     }
 
     pub fn set_base_pose(&mut self, base: Pose) -> Result<(), MissingFinalPose> {
@@ -60,6 +68,7 @@ impl Bone {
         if let Some(pose) = self.inv_pose {
             return pose;
         }
+        
         let inv_pose = self.pose.inverse();
         let pose = match self.parent {
             Some(id) => {
@@ -79,12 +88,9 @@ impl Bone {
     }
 
     // Recursively builds the pose matrices for self and any parent bone of self
-    pub fn build_pose(&mut self, bones: &mut Vec<Bone>) -> Result<Pose, MissingInvBindpose> {
-        if self.inv_pose.is_none() {
-            return Err(MissingInvBindpose);
-        }
+    pub fn build_pose(&mut self, bones: &mut Vec<Bone>) -> Pose {
         if let Some(pose) = self.final_pose {
-            return Ok(pose);
+            return pose;
         }
 
         let pose = self.pose;
@@ -92,7 +98,7 @@ impl Bone {
             Some(id) => {
                 if bones[id].final_pose.is_none() {
                     let mut parent = bones[id];
-                    let p_pose = parent.build_pose(bones)?;
+                    let p_pose = parent.build_pose(bones);
                     bones[id] = parent;
                     p_pose * pose
                 } else {
@@ -102,11 +108,10 @@ impl Bone {
             }
             None => pose,
         };
-        let inv_pose = self.inv_pose.unwrap();
-        let final_pose = pose * inv_pose;
+        let final_pose = pose;
         self.final_pose = Some(final_pose);
 
-        Ok(final_pose)
+        final_pose
     }
 }
 

@@ -1,5 +1,4 @@
 use glm::*;
-use std::ops::Range;
 
 pub fn minf32(value: f32, max: f32) -> f32 {
     if value < max {
@@ -19,6 +18,7 @@ pub fn maxf32(value: f32, min: f32) -> f32 {
     }
 }
 
+// Creates a 4x4 matrix from a column major array
 pub fn make_mat4_from_array(a: &[[f32; 4]; 4]) -> Mat4 {
     mat4(
         a[0][0], a[0][1], a[0][2], a[0][3],

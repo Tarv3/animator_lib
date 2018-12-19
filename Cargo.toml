@@ -3,7 +3,18 @@ name = "animator_lib"
 version = "0.1.0"
 authors = ["Josh <tarv360@gmail.com>"]
 
+
 [dependencies]
-nalgebra-glm = "0.1"
-ordered-float = "1.0.1"
+nalgebra-glm = {version = "*"}
 collada = "0.8.0"
+serde_json = "1.0"
+serde = "1.0"
+serde_derive = "1.0"
+
+[dependencies.ordered-float]
+version = "1.0"
+features = ["serde"]
+
+[dependencies.nalgebra]
+version = "*"
+features = ["serde-serialize"]

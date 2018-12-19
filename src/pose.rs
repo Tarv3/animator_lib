@@ -99,7 +99,7 @@ pub fn apply_base_pose(base: Pose, poses: &mut [Pose]) {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Pose {
     pub translation: Vec3,
     pub rotation: Quat,
@@ -203,8 +203,8 @@ impl Pose {
     }
 
     pub fn inverse(&self) -> Pose {
-        let translation = -self.translation;
         let rotation = quat_inverse(&self.rotation);
+        let translation = -quat_rotate_vec3(&rotation, &self.translation);
         let scale = vec3(1.0 / self.scale.x, 1.0 / self.scale.y, 1.0 / self.scale.z);
 
         Pose {

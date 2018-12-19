@@ -1,6 +1,5 @@
 use animation::Animation;
 use collada;
-use collada::document::ColladaDocument;
 use math::make_mat4_from_array;
 use pose::Pose;
 use std::{error, fmt};
@@ -41,6 +40,11 @@ pub fn reorder_animations(
     skeleton: &collada::Skeleton,
 ) -> Result<Vec<collada::Animation>, AnimationLoadError> {
     let mut failed = false;
+    for (i, animation) in animations.iter().enumerate() {
+        println!("Animation {} for \"{}\"", i, animation.target);
+    }
+    println!("");
+
     animations.sort_by(|a, b| {
         let a_index = get_joint_index(skeleton, a).unwrap_or_else(|| {
             failed = true;
@@ -53,6 +57,7 @@ pub fn reorder_animations(
 
         a_index.cmp(&b_index)
     });
+
 
     if failed {
         Err(AnimationLoadError)
@@ -78,9 +83,9 @@ pub fn animations_same_sample_times<'a>(
     true
 }
 
-// Animations must only contain animations for the give skeleton 
-pub fn load_animation(animations: Vec<collada::Animation>, skeleton: &collada::Skeleton) -> Result<Animation, AnimationLoadError> {
-    if animations.len() != skeleton.joints.len() {
+// Animations must only contain animations for the given skeleton 
+pub fn load_animation(animations: Vec<collada::Animation>, bones: usize) -> Result<Animation, AnimationLoadError> {
+    if animations.len() != bones {
         return Err(AnimationLoadError);
     }
 
@@ -88,10 +93,7 @@ pub fn load_animation(animations: Vec<collada::Animation>, skeleton: &collada::S
         return Err(AnimationLoadError);
     }
 
-    let animations = reorder_animations(animations, skeleton)?;
-
     let frames = animations[0].sample_times.len();
-    let bones = skeleton.joints.len();
 
     let mut output = Animation::with_capacity(bones, frames);
     let mut keyframe: Vec<Pose> = Vec::with_capacity(bones);

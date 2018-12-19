@@ -2,8 +2,13 @@ pub mod animator;
 
 use of::OrderedFloat;
 use pose::*;
+use std::io::{BufReader, BufWriter};
+use std::fs::File;
+use std::path::Path;
+use std::error::Error;
+use serde_json;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Animation {
     pub keyframes: usize,
     pub bones: usize,
@@ -76,5 +81,21 @@ impl Animation {
         }
 
         Some(self.times[next].into())
+    }
+
+    pub fn load_from(path: impl AsRef<Path>) -> Result<Animation, Box<Error>>{
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+
+        let animation = serde_json::from_reader(reader)?;
+        Ok(animation)
+    }   
+
+    pub fn save_to(&self, path: impl AsRef<Path>) -> Result<(), Box<Error>> {
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+
+        serde_json::to_writer(writer, &self)?;
+        Ok(())
     }
 }

@@ -19,6 +19,10 @@ impl Skeleton {
         }
     }
 
+    pub fn bone_count(&self) -> usize {
+        self.bones.len()
+    }
+
     pub fn with_capacity(capacity: usize) -> Skeleton {
         Skeleton {
             bones: Vec::with_capacity(capacity),
@@ -35,7 +39,7 @@ impl Skeleton {
             if i >= buffer.len() {
                 break;
             }
-            buffer[i] = self.bones[i].final_pose.ok_or(MissingFinalPose)?.matrix().into();
+            buffer[i] = self.bones[i].get_relative_pose().ok_or(MissingFinalPose)?.matrix().into();
         }
         Ok(())
     }
@@ -46,10 +50,16 @@ impl Skeleton {
             if i >= len {
                 break;
             }
-            buffer[i] = self.bones[i].final_pose.ok_or(MissingFinalPose)?;
+            buffer[i] = self.bones[i].get_relative_pose().ok_or(MissingFinalPose)?;
         }
 
         Ok(())
+    }
+
+    pub fn reset_inv_bindposes(&mut self) {
+        for bone in self.bones.iter_mut() {
+            bone.inv_pose = None;
+        }
     }
 
     // Will set the bindposes of all of the bones to their current transformations
@@ -60,6 +70,14 @@ impl Skeleton {
                 bone.build_inv_pose(&mut self.bones);
                 self.bones[i] = bone;
             }
+        }
+    }
+
+    // Will set the bindposes of all of the bones to their current transformations
+    pub fn build_inv_bindposes_from_final(&mut self) {
+        for bone in self.bones.iter_mut() {
+            let inv = bone.final_pose.unwrap().inverse();
+            bone.inv_pose = Some(inv);
         }
     }
 
@@ -77,7 +95,7 @@ impl Skeleton {
                 continue;
             }
             let mut bone = self.bones[i];
-            bone.build_pose(&mut self.bones)?;
+            bone.build_pose(&mut self.bones);
             self.bones[i] = bone;
         }
 
