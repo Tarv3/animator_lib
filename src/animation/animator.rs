@@ -1,147 +1,273 @@
-use animation::Animation;
-use math;
-use of::OrderedFloat;
 use pose::*;
+use math;
+use animation::traits::{Animation, AnimationTarget, Targets};
+use std::{cmp::PartialOrd, fmt, error};
+use glm::*;
 
-pub enum AniType {
-    Looping(f32),
-    Once,
-}
-
+#[derive(Debug)]
 pub struct Animator {
-    time: f32,
-    between: (usize, usize),
-    ani_type: AniType,
+    pub time: f32,
+    loop_time: Option<f32>,
+    forward_time: bool,
+    current_frame: (usize, f32),
+    next_frame: (usize, f32),
 }
 
 impl Animator {
-    pub fn new(ani_type: AniType) -> Animator {
+    pub fn new() -> Animator {
         Animator {
             time: 0.0,
-            between: (0, 0),
-            ani_type,
+            loop_time: None,
+            forward_time: true,
+            current_frame: (0, 0.0),
+            next_frame: (0, 0.0),
         }
     }
 
-    pub fn reset_time(&mut self) {
-        self.time = 0.0;
+    pub fn set_loop_time(&mut self, time: f32) {
+        self.loop_time = Some(time);
     }
 
-    pub fn write_pose_linear(&self, animation: &Animation, buffer: &mut [Pose]) {
-        self.write_pose_with_interpolator(animation, buffer, |x| x);
+    pub fn remove_loop(&mut self) {
+        self.loop_time = None;
     }
 
-    pub fn write_pose_with_interpolator<F>(&self, animation: &Animation, buffer: &mut [Pose], interpolator: F)
-    where
-        F: Fn(f32) -> f32,
-    {
-        let first = animation.get_frame_and_time(self.between.0);
-        let second = animation.get_frame_and_time(self.between.1);
+    pub fn set_time_direction(&mut self, forwards: bool) {
+        self.forward_time = forwards;
+    }
 
-        if self.between.0 == animation.times.len() - 1 {
-            match self.ani_type {
-                AniType::Looping(duration) => {
-                    let interp = (self.time - first.1) / duration;
-                    interpolate_poses(&first.0, &second.0, buffer, interpolator(interp));
-                    return;
-                }
-                AniType::Once => {
-                    write_poses(first.0, buffer);
-                    return;
-                }
-            }
+    pub fn reverse(&mut self) {
+        self.forward_time = !self.forward_time;
+    }
+
+    pub fn add_time(&mut self, time: f32) {
+        if self.forward_time {
+            self.time += time;
+        }
+        else {
+            self.time -= time;
+        }
+    }
+
+    pub fn current_frame(&self) -> (usize, f32) {
+        self.current_frame
+    }
+    
+    pub fn next_frame(&self) -> (usize, f32) {
+        self.next_frame
+    }
+    
+    pub fn update_frames(&mut self, sample_times: &[f32]) {
+        let len = sample_times.len();
+        assert!(len > 1);
+
+        if self.time >= self.current_frame.1 && self.time < self.next_frame.1 {
+            return;
         }
 
-        let time = second.1 - first.1;
-        let interp = (self.time - first.1) / time;
-        interpolate_poses(&first.0, &second.0, buffer, interpolator(interp));
-    }
-
-    // Adds time to the animation either positive or negative time and then updates
-    // the between value.
-    pub fn add_time(&mut self, animation: &Animation, time: f32) {
-        assert!(animation.keyframes > 0);
-
-        let last = *animation.times.last().unwrap();
-        let last: f32 = last.into();
-
-        let mut new_time = self.time + time;
-
-        match self.ani_type {
-            AniType::Looping(duration) => {
-                new_time = math::time_loop(new_time, 0.0, last + duration)
-            }
-            _ => new_time = math::clampf32(new_time, 0.0, last),
-        }
-
-        self.time = new_time;
-        self.update_between(animation, time.is_sign_positive());
-    }
-
-    // Binary searches for self.time in animation.times and uses that index to
-    // set self.between
-    pub fn update_between_binary_search(&mut self, animation: &Animation) {
-        let first = match animation
-            .times
-            .binary_search_by(|num| num.cmp(&OrderedFloat(self.time)))
-        {
-            Ok(index) => index,
-            Err(index) => index - 1,
+        let (last_ind, last_time) = match len > 0 {
+            true => (len - 1, sample_times[len - 1]),
+            false => (0, 0.0),
         };
-
-        let second = match first == animation.times.len() - 1 {
-            true => 0,
-            false => first + 1,
-        };
-
-        self.between = (first, second);
-    }
-
-    // Guesses that the new between will be near the old between so it iterates through
-    // the times until the between value is correct
-    fn update_between(&mut self, animation: &Animation, positive_dir: bool) {
-        let len = animation.times.len();
-        for _ in 0..len {
-            if !self.between_needs_update(animation) {
-                break;
-            }
-            if positive_dir {
-                self.between.0 = self.between.1;
-                self.between.1 = (self.between.1 + 1) % len;
-            } else {
-                self.between.1 = self.between.0;
-                if self.between.0 == 0 {
-                    self.between.0 = len - 1;
-                } else {
-                    self.between.0 -= 1;
-                }
+        
+        if self.loop_time.is_some() {
+            let loop_time = self.loop_time.unwrap();
+            let duration = loop_time + last_time;
+            self.time = math::time_loop(self.time, 0.0, duration);
+         
+            if self.time >= last_time && self.time < duration {
+                self.current_frame = (last_ind, last_time);
+                self.next_frame = (0, 0.0);
+                return;
             }
         }
-    }
+        else if self.time >= last_time && self.forward_time {
+            self.current_frame = (last_ind, last_time);
+            self.next_frame = (last_ind, last_time);
+            return;
+        }
+        else if self.time <= 0.0 {
+            self.current_frame = (0, 0.0);
+            self.next_frame = (0, 0.0);
+            return;
+        }
 
-    // Returns if self.time is between self.between
-    fn between_needs_update(&self, animation: &Animation) -> bool {
-        let first = animation.times[self.between.0].into_inner();
-        let second;
-        if self.between.0 == animation.times.len() - 1 {
-            second = match self.ani_type {
-                AniType::Looping(duration) => first + duration,
-                _ => first,
+        if self.forward_time {
+            if self.time < self.current_frame.1 {
+                let index = match sample_times[..self.current_frame.0].binary_search_by(|x| x.partial_cmp(&self.time).unwrap()) {
+                    Ok(index) => index,
+                    Err(index) => index - 1,
+                };
+
+                self.current_frame = (index, sample_times[index]);
+                self.next_frame = (index + 1, sample_times[index + 1]);
+                return;
+            }
+
+            self.current_frame = self.next_frame;
+            let next = self.next_frame.0 + 1;
+            self.next_frame = (next, sample_times[next]);
+            
+
+            while !(self.time >= self.current_frame.1 && self.time < self.next_frame.1) {
+                self.current_frame = self.next_frame;
+                let next = self.next_frame.0 + 1;
+                self.next_frame = (next, sample_times[next]);
+            }
+
+            return;
+        }
+        else {
+            if self.time > self.next_frame.1 {
+                let index = match sample_times[self.next_frame.0..].binary_search_by(|x| x.partial_cmp(&self.time).unwrap()) {
+                    Ok(index) => index,
+                    Err(index) => index,
+                };
+
+                self.next_frame = (index, sample_times[index]);
+                self.current_frame = (index - 1, sample_times[index - 1]);
+                return;
+            }
+
+            self.next_frame = self.current_frame;
+            let prev = match self.current_frame.0 == 0 {
+                false => self.current_frame.0 - 1,
+                true => last_ind,
             };
-        } else {
-            second = animation.times[self.between.1].into_inner();
+            // println!("Current: {}, next: {}, prev: {}", self.current_frame.0, self.next_frame.0, prev);
+            self.current_frame = (prev, sample_times[prev]);
+            while !(self.time >= self.current_frame.1 && self.time < self.next_frame.1) {
+                self.next_frame = self.current_frame;
+                let prev = self.current_frame.0 - 1;
+                self.current_frame = (prev, sample_times[prev]);;
+            }
         }
 
-        self.time < first || self.time > second
+    }   
+
+    pub fn manipulate_pose<A, T, F>(&self, animation: &A, targets: &mut [T], mut function: F) -> Result<(), MissingFrameError> 
+    where
+        A: Animation,
+        T: AnimationTarget + Sized,
+        F: FnMut(Pose, Pose, f32, &mut T),
+    {
+        let frames = animation.frames();
+        if frames == 0 {
+            return Ok(());
+        }
+
+        let last = frames - 1;
+        let (cposes, ctime) = animation.get_frame(self.current_frame.0).ok_or(MissingFrameError::new(self.current_frame.0))?;
+        let (nposes, ntime)= animation.get_frame(self.next_frame.0).ok_or(MissingFrameError::new(self.next_frame.0))?;
+
+        let interpolate;
+
+        if self.current_frame.0 == last {
+            match self.loop_time {
+                Some(duration) => interpolate = (self.time - ctime) / duration,
+                None => interpolate = 0.0,
+            }
+        }
+        else {
+            interpolate = (self.time - ctime) / (ntime - ctime);
+        }
+
+        match animation.get_targets() {
+            Targets::Specified(array) => {
+                for (i, target) in array.iter().enumerate() {
+                    function(cposes[i], nposes[i], interpolate, &mut targets[*target]);
+                }
+            }
+            Targets::InOrder => {
+                for (i, target) in targets.iter_mut().enumerate() {
+                    function(cposes[i], nposes[i], interpolate, target);
+                }
+            }
+        }
+
+        Ok(())
     }
 
-    pub fn has_finished(&self, animation: &Animation) -> bool {
-        assert!(animation.keyframes > 0);
-        let last = animation.times.last().unwrap();
+    pub fn write_pose<A, T>(&self, animation: &A, targets: &mut [T]) -> Result<(), MissingFrameError>
+    where
+        A: Animation,
+        T: AnimationTarget,
+    {
+        self.manipulate_pose(animation, targets, |a, b, interpolate, target| {
+            let pose = pose_interp(&a, &b, interpolate);
+            target.set_pose(pose);
+        })
+    }
 
-        match self.ani_type {
-            AniType::Once => last.into_inner() == self.time,
-            AniType::Looping(_) => false,
+    pub fn add_pose<A, T>(&self, animation: &A, targets: &mut [T]) -> Result<(), MissingFrameError>
+    where
+        A: Animation,
+        T: AnimationTarget + Sized,
+    {
+        self.manipulate_pose(animation, targets, |a, b, interpolate, target| {
+            let pose = pose_interp(&a, &b, interpolate);
+            target.add_pose(pose);
+        })
+    }
+
+    pub fn add_rotations<A, T>(&self, animation: &A, targets: &mut [T]) -> Result<(), MissingFrameError> 
+    where
+        A: Animation,
+        T: AnimationTarget + Sized,
+    {
+        self.manipulate_pose(animation, targets, |a, b, interpolate, target| {
+            let rotation;
+            let a_rot = a.rotation;
+            let b_rot = b.rotation;
+
+            if dot(&a_rot.coords, &b_rot.coords) < 0.0 {
+                rotation = quat_slerp(&-a_rot, &b_rot, interpolate);
+            } else {
+                rotation = quat_slerp(&a_rot, &b_rot, interpolate);
+            }
+
+            target.add_rotation(rotation);
+        })
+    }
+
+    pub fn write_rotations<A, T>(&self, animation: &A, targets: &mut [T]) -> Result<(), MissingFrameError> 
+    where
+        A: Animation,
+        T: AnimationTarget + Sized,
+    {
+        self.manipulate_pose(animation, targets, |a, b, interpolate, target| {
+            let rotation;
+            let a_rot = a.rotation;
+            let b_rot = b.rotation;
+
+            if dot(&a_rot.coords, &b_rot.coords) < 0.0 {
+                rotation = quat_slerp(&-a_rot, &b_rot, interpolate);
+            } else {
+                rotation = quat_slerp(&a_rot, &b_rot, interpolate);
+            }
+
+            target.get_pose_mut().rotation = rotation;
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MissingFrameError {
+    frame: usize,
+}
+
+impl MissingFrameError {
+    pub fn new(frame: usize) -> MissingFrameError {
+        MissingFrameError {
+            frame,
         }
     }
 }
+
+impl fmt::Display for MissingFrameError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Animation missing {} frame", self.frame)
+    }
+}
+
+impl error::Error for MissingFrameError {}

@@ -3,102 +3,6 @@ use glm::*;
 use math::*;
 use std::ops::{Mul, MulAssign};
 
-// Mixes in the form "a * (1 - f) + b * f"
-pub fn pose_interp_fast(a: &Pose, b: &Pose, f: f32) -> Pose {
-    let f = maxf32(minf32(f, 1.0), 0.0);
-    let omf = 1.0 - f;
-    let translation = a.translation * omf + b.translation * f;
-    let rotation;
-    if dot(&a.rotation.coords, &b.rotation.coords) < 0.0 {
-        rotation = quat_fast_mix(&-a.rotation, &b.rotation, f);
-    } else {
-        rotation = quat_fast_mix(&a.rotation, &b.rotation, f);
-    }
-    let scale = a.scale * omf + b.scale * f;
-
-    Pose {
-        translation,
-        rotation,
-        scale,
-    }
-}
-
-// Mixes in the form "a * (1 - f) + b * f"
-pub fn pose_interp(a: &Pose, b: &Pose, f: f32) -> Pose {
-    let f = maxf32(minf32(f, 1.0), 0.0);
-    let omf = 1.0 - f;
-    let translation = a.translation * omf + b.translation * f;
-    let rotation;
-    if dot(&a.rotation.coords, &b.rotation.coords) < 0.0 {
-        rotation = quat_slerp(&-a.rotation, &b.rotation, f);
-    } else {
-        rotation = quat_slerp(&a.rotation, &b.rotation, f);
-    }
-    let scale = a.scale * omf + b.scale * f;
-
-    Pose {
-        translation,
-        rotation,
-        scale,
-    }
-}
-
-// Interpolates in the form a * (1 - val) + b * val and writes the poses into to
-// all array slices must be the same length
-pub fn interpolate_poses(a: &[Pose], b: &[Pose], to: &mut [Pose], val: f32) {
-    assert!(a.len() == b.len() && a.len() == to.len());
-
-    for i in 0..a.len() {
-        to[i] = pose_interp(&a[i], &b[i], val);
-    }
-}
-
-// Interpolates between a and b where each pose has its own weight where the final poses
-// are to[i] = a[i] * (1 - interp_factors[i]) + b[i] * interp_factors[i]
-pub fn weighted_pose_interp(a: &[Pose], b: &[Pose], to: &mut [Pose], interp_factors: &[f32]) {
-    assert!(a.len() == b.len() && a.len() == to.len() && a.len() == interp_factors.len());
-
-    for i in 0..a.len() {
-        to[i] = pose_interp(&a[i], &b[i], interp_factors[i]);
-    }
-}
-
-// Mixes a collection of poses with weights linearly
-// may not work as intended
-pub fn n_pose_interp(poses: &[Pose], weights: &mut [f32]) -> Pose {
-    assert!(poses.len() == weights.len() && weights.len() > 1);
-
-    let sum: f32 = weights.iter().sum();
-    let one_on_sum = 1.0 / sum;
-    let mut current_pose = poses[0];
-    let mut current_weight = weights[0];
-
-    for (i, weight) in weights.iter().map(|a| *a * one_on_sum).enumerate().skip(1) {
-        let i = i + 1;
-        let next_pose = poses[i];
-        current_weight += weight;
-        let interp_factor = weight / current_weight;
-        current_pose = pose_interp(&current_pose, &next_pose, interp_factor);
-    }
-
-    current_pose
-}
-
-pub fn write_poses(a: &[Pose], to: &mut [Pose]) {
-    assert!(a.len() == to.len());
-
-    for i in 0..to.len() {
-        to[i] = a[i];
-    }
-}
-
-// Applies pose * base to all poses
-pub fn apply_base_pose(base: Pose, poses: &mut [Pose]) {
-    for pose in poses.iter_mut() {
-        *pose = *pose * base;
-    }
-}
-
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Pose {
     pub translation: Vec3,
@@ -181,6 +85,11 @@ impl Pose {
         m[(2, 3)] = self.translation.z;
     }
 
+    pub fn add_rotation(&mut self, rotation: Quat) {
+        self.translation = quat_rotate_vec3(&rotation, &self.translation);
+        self.rotation = self.rotation * rotation;
+    }
+
     // Creates a matrix in the form of translation * rotation * scale
     pub fn matrix(&self) -> Mat4 {
         let mut rotation = self.rotation_mat();
@@ -230,8 +139,8 @@ impl Pose {
 impl Mul<Pose> for Pose {
     type Output = Pose;
     fn mul(self, rhs: Pose) -> Pose {
-        let rot_trans = quat_rotate_vec(&self.rotation, &vec3_to_vec4(&rhs.translation));
-        let translation = vec4_to_vec3(&rot_trans) + self.translation;
+        let rot_trans = quat_rotate_vec3(&self.rotation, &rhs.translation);
+        let translation = rot_trans + self.translation;
         let rotation = self.rotation * rhs.rotation;
         let scale = Vec3::new(
             self.scale.x * rhs.scale.x,
@@ -330,3 +239,101 @@ impl Into<Mat4> for Pose {
         self.matrix()
     }
 }
+
+// Mixes in the form "a * (1 - f) + b * f"
+pub fn pose_interp_fast(a: &Pose, b: &Pose, f: f32) -> Pose {
+    let f = maxf32(minf32(f, 1.0), 0.0);
+    let omf = 1.0 - f;
+    let translation = a.translation * omf + b.translation * f;
+    let rotation;
+    if dot(&a.rotation.coords, &b.rotation.coords) < 0.0 {
+        rotation = quat_fast_mix(&-a.rotation, &b.rotation, f);
+    } else {
+        rotation = quat_fast_mix(&a.rotation, &b.rotation, f);
+    }
+    let scale = a.scale * omf + b.scale * f;
+
+    Pose {
+        translation,
+        rotation,
+        scale,
+    }
+}
+
+// Mixes in the form "a * (1 - f) + b * f"
+pub fn pose_interp(a: &Pose, b: &Pose, f: f32) -> Pose {
+    let f = maxf32(minf32(f, 1.0), 0.0);
+    let omf = 1.0 - f;
+    let translation = a.translation * omf + b.translation * f;
+    
+    let rotation;
+    if dot(&a.rotation.coords, &b.rotation.coords) < 0.0 {
+        rotation = quat_slerp(&-a.rotation, &b.rotation, f);
+    } else {
+        rotation = quat_slerp(&a.rotation, &b.rotation, f);
+    }
+    let scale = a.scale * omf + b.scale * f;
+
+    Pose {
+        translation,
+        rotation,
+        scale,
+    }
+}
+
+// Interpolates in the form a * (1 - val) + b * val and writes the poses into to
+// all array slices must be the same length
+pub fn interpolate_poses(a: &[Pose], b: &[Pose], to: &mut [Pose], val: f32) {
+    assert!(a.len() == b.len() && a.len() == to.len());
+
+    for i in 0..a.len() {
+        to[i] = pose_interp(&a[i], &b[i], val);
+    }
+}
+
+// Interpolates between a and b where each pose has its own weight where the final poses
+// are to[i] = a[i] * (1 - interp_factors[i]) + b[i] * interp_factors[i]
+pub fn weighted_pose_interp(a: &[Pose], b: &[Pose], to: &mut [Pose], interp_factors: &[f32]) {
+    assert!(a.len() == b.len() && a.len() == to.len() && a.len() == interp_factors.len());
+
+    for i in 0..a.len() {
+        to[i] = pose_interp(&a[i], &b[i], interp_factors[i]);
+    }
+}
+
+// Mixes a collection of poses with weights linearly
+// may not work as intended
+pub fn n_pose_interp(poses: &[Pose], weights: &mut [f32]) -> Pose {
+    assert!(poses.len() == weights.len() && weights.len() > 1);
+
+    let sum: f32 = weights.iter().sum();
+    let one_on_sum = 1.0 / sum;
+    let mut current_pose = poses[0];
+    let mut current_weight = weights[0];
+
+    for (i, weight) in weights.iter().map(|a| *a * one_on_sum).enumerate().skip(1) {
+        let i = i + 1;
+        let next_pose = poses[i];
+        current_weight += weight;
+        let interp_factor = weight / current_weight;
+        current_pose = pose_interp(&current_pose, &next_pose, interp_factor);
+    }
+
+    current_pose
+}
+
+pub fn write_poses(a: &[Pose], to: &mut [Pose]) {
+    assert!(a.len() == to.len());
+
+    for i in 0..to.len() {
+        to[i] = a[i];
+    }
+}
+
+// Applies pose * base to all poses
+pub fn apply_base_pose(base: Pose, poses: &mut [Pose]) {
+    for pose in poses.iter_mut() {
+        *pose = *pose * base;
+    }
+}
+

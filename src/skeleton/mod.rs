@@ -13,6 +13,10 @@ impl Skeleton {
         self.bones.as_slice()
     }
 
+    pub fn bones_mut_ref(&mut self) -> &mut [Bone] {
+        &mut self.bones[..]
+    }
+
     pub fn from_bones(bones: Vec<Bone>) -> Skeleton {
         Skeleton {
             bones,
@@ -64,6 +68,8 @@ impl Skeleton {
 
     // Will set the bindposes of all of the bones to their current transformations
     pub fn build_inv_bindposes(&mut self) {
+        self.reset_inv_bindposes();
+        
         for i in 0..self.bones.len() {
             if self.bones[i].inv_pose.is_none() {
                 let mut bone = self.bones[i];
@@ -129,7 +135,8 @@ impl Skeleton {
 
         Ok(())
     }
-
+    
+    #[cfg(debug)]
     pub fn pretty_print(&self) {
         for (i, bone) in self.bones.iter().enumerate() {
             println!("Bone {} = {:?}\n", i, bone);

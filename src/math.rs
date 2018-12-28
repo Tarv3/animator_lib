@@ -1,4 +1,5 @@
 use glm::*;
+use collada_parser::math::Matrix4;
 
 pub fn minf32(value: f32, max: f32) -> f32 {
     if value < max {
@@ -25,6 +26,17 @@ pub fn make_mat4_from_array(a: &[[f32; 4]; 4]) -> Mat4 {
         a[1][0], a[1][1], a[1][2], a[1][3],
         a[2][0], a[2][1], a[2][2], a[2][3],
         a[3][0], a[3][1], a[3][2], a[3][3],
+    )
+}
+
+pub fn mat4_from_matrix4(m: &Matrix4) -> Mat4 {
+    let a = m.as_ref();
+
+    mat4(
+        a[0], a[1], a[2], a[3],
+        a[4], a[5], a[6], a[7], 
+        a[8], a[9], a[10], a[11],
+        a[12], a[13], a[14], a[15]
     )
 }
 

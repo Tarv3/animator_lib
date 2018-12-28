@@ -1,6 +1,7 @@
 use pose::Pose;
 use std::error;
 use std::fmt;
+use animation::traits::AnimationTarget;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Bone {
@@ -112,6 +113,20 @@ impl Bone {
         self.final_pose = Some(final_pose);
 
         final_pose
+    }
+}
+
+impl AnimationTarget for Bone {
+    fn set_pose(&mut self, pose: Pose) {
+        self.pose = pose;
+    }
+
+    fn get_pose(&self) -> Pose {
+        self.pose
+    }
+
+    fn get_pose_mut(&mut self) -> &mut Pose {
+        &mut self.pose
     }
 }
 

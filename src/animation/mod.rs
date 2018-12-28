@@ -1,6 +1,8 @@
 pub mod animator;
+pub mod traits;
+#[cfg(test)]
+mod animation_tests;
 
-use of::OrderedFloat;
 use pose::*;
 use std::io::{BufReader, BufWriter};
 use std::fs::File;
@@ -8,12 +10,13 @@ use std::path::Path;
 use std::error::Error;
 use serde_json;
 
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Animation {
     pub keyframes: usize,
     pub bones: usize,
     pub poses: Vec<Pose>,
-    pub times: Vec<OrderedFloat<f32>>,
+    pub times: Vec<f32>,
 }
 
 impl Animation {
@@ -23,11 +26,11 @@ impl Animation {
         assert!(poses.len() == bones * keyframes);
 
         let mut times_iter = times.iter();
-        let mut times: Vec<OrderedFloat<f32>> = Vec::with_capacity(times.len());
+        let mut times: Vec<f32> = Vec::with_capacity(times.len());
         match times_iter.next() {
             Some(time) => {
-                times.push(OrderedFloat(*time));   
-                times.extend(times_iter.map(|t| OrderedFloat(t - time)));
+                times.push(*time);   
+                times.extend(times_iter.map(|t| t - time));
             },
             None => (),
         }
@@ -49,7 +52,16 @@ impl Animation {
         }
     }
 
-    pub fn add_frame(&mut self, poses: &[Pose], time: impl Into<OrderedFloat<f32>>) {
+    pub fn new(bones: usize) -> Animation {
+        Animation {
+            keyframes: 0,
+            bones,
+            poses: vec![],
+            times: vec![],
+        }
+    }
+
+    pub fn add_frame(&mut self, poses: &[Pose], time: impl Into<f32>) {
         assert!(poses.len() == self.bones);
         let time = time.into();
         let time = match self.times.last() {
@@ -57,7 +69,7 @@ impl Animation {
                 assert!(*t < time);
                 time
             }
-            None => OrderedFloat(0.0),
+            None => 0.0,
         };
 
         self.keyframes += 1;
@@ -71,7 +83,7 @@ impl Animation {
         let start = frame * self.bones;
         let end = start + self.bones;
 
-        (&self.poses[start..end], self.times[frame].into())
+        (&self.poses[start..end], self.times[frame])
     }
 
     pub fn next_frame_time(&self, current_frame: usize) -> Option<f32> {
@@ -80,7 +92,7 @@ impl Animation {
             return None;
         }
 
-        Some(self.times[next].into())
+        Some(self.times[next])
     }
 
     pub fn load_from(path: impl AsRef<Path>) -> Result<Animation, Box<Error>>{
@@ -97,5 +109,24 @@ impl Animation {
 
         serde_json::to_writer(writer, &self)?;
         Ok(())
+    }
+}
+
+
+impl traits::Animation for Animation {
+    fn sample_times(&self) -> &[f32] {
+        self.times.as_slice()
+    }
+
+    fn get_frame(&self, frame: usize) -> Option<(&[Pose], f32)> {
+        if frame >= self.times.len() {
+            return None;
+        }
+
+        Some(self.get_frame_and_time(frame))
+    }
+
+    fn get_targets<'a>(&'a self) -> traits::Targets<'a> {
+        traits::Targets::InOrder
     }
 }
