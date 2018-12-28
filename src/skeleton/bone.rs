@@ -21,6 +21,10 @@ impl Bone {
             inv_pose: None,
         }
     }
+    
+    pub fn reset_to_bind(&mut self) {
+        self.pose = Pose::pose_identity();
+    }
 
     pub fn is_root(&self) -> bool {
         match self.parent {

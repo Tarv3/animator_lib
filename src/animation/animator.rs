@@ -4,7 +4,7 @@ use animation::traits::{Animation, AnimationTarget, Targets};
 use std::{cmp::PartialOrd, fmt, error};
 use glm::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Animator {
     pub time: f32,
     loop_time: Option<f32>,
@@ -59,7 +59,7 @@ impl Animator {
     
     pub fn update_frames(&mut self, sample_times: &[f32]) {
         let len = sample_times.len();
-        assert!(len > 1);
+        assert!(len > 0);
 
         if self.time >= self.current_frame.1 && self.time < self.next_frame.1 {
             return;
@@ -134,7 +134,7 @@ impl Animator {
                 false => self.current_frame.0 - 1,
                 true => last_ind,
             };
-            // println!("Current: {}, next: {}, prev: {}", self.current_frame.0, self.next_frame.0, prev);
+
             self.current_frame = (prev, sample_times[prev]);
             while !(self.time >= self.current_frame.1 && self.time < self.next_frame.1) {
                 self.next_frame = self.current_frame;

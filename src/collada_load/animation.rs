@@ -19,9 +19,13 @@ impl Error for AnimationLoadError {}
 pub fn load_animation(skeleton: &Skeleton, ani: &[Animation]) -> Result<animation::Animation, AnimationLoadError> {
     let mut sample_times = None;
     let mut animations = vec![];
+    let mut targets = vec![];
 
-    for animation in skeleton.animations(ani) {
-        let animation = animation.ok_or(AnimationLoadError)?;
+    for (i, animation) in skeleton.animations(ani) {
+        let animation = match animation {
+            Some(animation) => animation,
+            None => continue,
+        };
 
         if sample_times.is_none() {
             sample_times = Some(&animation.sample_times);
@@ -31,6 +35,7 @@ pub fn load_animation(skeleton: &Skeleton, ani: &[Animation]) -> Result<animatio
         }
 
         animations.push(&animation.transformations);
+        targets.push(i);
     }
 
     let keyframes = match sample_times {
@@ -38,8 +43,13 @@ pub fn load_animation(skeleton: &Skeleton, ani: &[Animation]) -> Result<animatio
         None => return Err(AnimationLoadError), 
     };
 
-    let bones = skeleton.nodes.len();
-    let mut animation = animation::Animation::with_capacity(bones, keyframes);
+    let bones = targets.len();
+    let targets = match targets.len() == skeleton.nodes.len() {
+        false => Some(targets),
+        true => None,
+    };
+
+    let mut animation = animation::Animation::with_capacity(bones, keyframes, targets);
 
     let mut poses = Vec::with_capacity(bones); 
     let sample_times = sample_times.unwrap();

@@ -23,9 +23,9 @@ impl Pose {
         }
     }
 
-    pub fn only_trans(translation: Vec3) -> Pose {
+    pub fn only_trans(x: f32, y: f32, z: f32) -> Pose {
         Pose {
-            translation,
+            translation: vec3(x, y, z),
             rotation: quat_identity(),
             scale: Vec3::new(1.0, 1.0, 1.0),
         }
@@ -43,7 +43,7 @@ impl Pose {
         Pose {
             translation: Vec3::new(0.0, 0.0, 0.0),
             rotation,
-            scale: Vec3::new(1.0, 1.0, 1.0),
+            scale: vec3(1.0, 1.0, 1.0),
         }
     }
 
@@ -86,8 +86,13 @@ impl Pose {
     }
 
     pub fn add_rotation(&mut self, rotation: Quat) {
-        self.translation = quat_rotate_vec3(&rotation, &self.translation);
-        self.rotation = self.rotation * rotation;
+        self.rotation = rotation * self.rotation;
+    }
+
+    pub fn scale(&mut self, scale: Vec3) {
+        self.scale.x *= scale.x;
+        self.scale.y *= scale.y;
+        self.scale.z *= scale.z;
     }
 
     // Creates a matrix in the form of translation * rotation * scale
@@ -139,7 +144,11 @@ impl Pose {
 impl Mul<Pose> for Pose {
     type Output = Pose;
     fn mul(self, rhs: Pose) -> Pose {
-        let rot_trans = quat_rotate_vec3(&self.rotation, &rhs.translation);
+        let mut rot_trans = quat_rotate_vec3(&self.rotation, &rhs.translation);
+        rot_trans.x *= self.scale.x;
+        rot_trans.y *= self.scale.y;
+        rot_trans.z *= self.scale.z;
+        
         let translation = rot_trans + self.translation;
         let rotation = self.rotation * rhs.rotation;
         let scale = Vec3::new(
@@ -165,66 +174,27 @@ impl MulAssign<Pose> for Pose {
 impl<'a> Mul<&'a Pose> for Pose {
     type Output = Pose;
     fn mul(self, rhs: &Pose) -> Pose {
-        let rot_trans = quat_rotate_vec(&self.rotation, &vec3_to_vec4(&rhs.translation));
-        let translation = vec4_to_vec3(&rot_trans) + self.translation;
-        let rotation = self.rotation * rhs.rotation;
-        let scale = Vec3::new(
-            self.scale.x * rhs.scale.x,
-            self.scale.y * rhs.scale.y,
-            self.scale.z * rhs.scale.z,
-        );
-
-        Pose {
-            translation,
-            rotation,
-            scale,
-        }
+        self * *rhs
     }
 }
 
 impl<'a> MulAssign<&'a Pose> for Pose {
     fn mul_assign(&mut self, rhs: &Pose) {
-        *self = &*self * rhs;
+        *self = *self * rhs;
     }
 }
 
 impl<'a> Mul<Pose> for &'a Pose {
     type Output = Pose;
     fn mul(self, rhs: Pose) -> Pose {
-        let rot_trans = quat_rotate_vec(&self.rotation, &vec3_to_vec4(&rhs.translation));
-        let translation = vec4_to_vec3(&rot_trans) + self.translation;
-        let rotation = self.rotation * rhs.rotation;
-        let scale = Vec3::new(
-            self.scale.x * rhs.scale.x,
-            self.scale.y * rhs.scale.y,
-            self.scale.z * rhs.scale.z,
-        );
-
-        Pose {
-            translation,
-            rotation,
-            scale,
-        }
+        *self * rhs
     }
 }
 
 impl<'a, 'b> Mul<&'a Pose> for &'b Pose {
     type Output = Pose;
     fn mul(self, rhs: &'a Pose) -> Pose {
-        let rot_trans = quat_rotate_vec(&self.rotation, &vec3_to_vec4(&rhs.translation));
-        let translation = vec4_to_vec3(&rot_trans) + self.translation;
-        let rotation = self.rotation * rhs.rotation;
-        let scale = Vec3::new(
-            self.scale.x * rhs.scale.x,
-            self.scale.y * rhs.scale.y,
-            self.scale.z * rhs.scale.z,
-        );
-
-        Pose {
-            translation,
-            rotation,
-            scale,
-        }
+        *self * *rhs
     }
 }
 
@@ -265,7 +235,7 @@ pub fn pose_interp(a: &Pose, b: &Pose, f: f32) -> Pose {
     let f = maxf32(minf32(f, 1.0), 0.0);
     let omf = 1.0 - f;
     let translation = a.translation * omf + b.translation * f;
-    
+
     let rotation;
     if dot(&a.rotation.coords, &b.rotation.coords) < 0.0 {
         rotation = quat_slerp(&-a.rotation, &b.rotation, f);
@@ -336,4 +306,3 @@ pub fn apply_base_pose(base: Pose, poses: &mut [Pose]) {
         *pose = *pose * base;
     }
 }
-

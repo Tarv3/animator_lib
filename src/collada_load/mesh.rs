@@ -17,7 +17,7 @@ impl Display for MeshLoadError {
 impl Error for MeshLoadError {}
 
 pub trait VertexFromParts: Sized {
-    fn from_parts(vertex: Vector3, tvertex: Option<Vector2>, normal: Option<Vector3>, weights: Option<&Vec<JointWeight>>) -> Option<Self>;
+    fn from_parts(vertex: Vector3, tvertex: Option<Vector2>, normal: Option<Vector3>, weights: Option<&[JointWeight]>) -> Option<Self>;
 }
 
 pub fn load_mesh<V: VertexFromParts + Copy>(mesh: &Mesh, skin: Option<&Skin>) -> Result<mesh::Mesh<V>, MeshLoadError> {
@@ -34,7 +34,7 @@ pub fn load_mesh<V: VertexFromParts + Copy>(mesh: &Mesh, skin: Option<&Skin>) ->
             let vert = mesh.vertices[vertex];
             let tex = tex.map(|x| mesh.tex_coords[x]);
             let normal = normal.map(|x| mesh.normals[x]);
-            let weights = skin.map(|x| &x.vertex_weights[vertex]);
+            let weights = skin.map(|x| x.vertex_weights[vertex].as_slice());
 
             let vertex = match V::from_parts(vert, tex, normal, weights) {
                 Some(vertex) => vertex,

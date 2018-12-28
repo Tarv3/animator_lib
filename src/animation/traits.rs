@@ -77,6 +77,8 @@ impl AnimationTarget for Pose {
     fn add_pose(&mut self, pose: Pose) {
         *self = pose * *self;
     }
+}
 
-    
+pub trait AnimationLibrary<A: Animation> {
+    fn get_animation(&self, index: usize) -> Option<&A>; 
 }

@@ -1,5 +1,7 @@
 pub mod animator;
 pub mod traits;
+pub mod library;
+pub mod controller;
 #[cfg(test)]
 mod animation_tests;
 
@@ -10,18 +12,18 @@ use std::path::Path;
 use std::error::Error;
 use serde_json;
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Animation {
     pub keyframes: usize,
     pub bones: usize,
     pub poses: Vec<Pose>,
     pub times: Vec<f32>,
+    pub targets: Option<Vec<usize>>,
 }
 
 impl Animation {
     // Builds animation with the times moved such that time[0] = 0
-    pub fn from_poses_and_times(bones: usize, poses: &[Pose], times: &[f32]) -> Animation {
+    pub fn from_poses_and_times(bones: usize, poses: &[Pose], times: &[f32], targets: Option<Vec<usize>>) -> Animation {
         let keyframes = times.len();
         assert!(poses.len() == bones * keyframes);
 
@@ -40,24 +42,27 @@ impl Animation {
             bones,
             poses: poses.iter().map(|pose| *pose).collect(),
             times,
+            targets,
         }
     }
 
-    pub fn with_capacity(bones: usize, keyframes: usize) -> Animation {
+    pub fn with_capacity(bones: usize, keyframes: usize, targets: Option<Vec<usize>>) -> Animation {
         Animation {
             keyframes: 0,
             bones,
             poses: Vec::with_capacity(bones * keyframes),
             times: Vec::with_capacity(keyframes),
+            targets,
         }
     }
 
-    pub fn new(bones: usize) -> Animation {
+    pub fn new(bones: usize, targets: Option<Vec<usize>>) -> Animation {
         Animation {
             keyframes: 0,
             bones,
             poses: vec![],
             times: vec![],
+            targets,
         }
     }
 
@@ -127,6 +132,9 @@ impl traits::Animation for Animation {
     }
 
     fn get_targets<'a>(&'a self) -> traits::Targets<'a> {
-        traits::Targets::InOrder
+        match &self.targets {
+            Some(target) => traits::Targets::Specified(target),
+            None => traits::Targets::InOrder,
+        }
     }
 }

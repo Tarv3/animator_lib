@@ -93,6 +93,12 @@ impl Skeleton {
         }
     }
 
+    pub fn reset_pose(&mut self) {
+        for bone in &mut self.bones {
+            bone.reset_to_bind();
+        }
+    }
+
     // Must be called after updating bone transformations
     pub fn rebuild_poses(&mut self) -> Result<(), MissingInvBindpose> {
         self.reset_bones();
