@@ -1,4 +1,5 @@
 extern crate nalgebra_glm as glm;
+extern crate nalgebra as na;
 extern crate ordered_float as of;
 extern crate serde;
 #[macro_use]

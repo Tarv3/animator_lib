@@ -1,6 +1,6 @@
-use glm;
-use glm::*;
+use glm::{self, *};
 use math::*;
+use na::{base::Unit, geometry::{Isometry3, Translation}};
 use std::ops::{Mul, MulAssign};
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -93,6 +93,11 @@ impl Pose {
         self.scale.x *= scale.x;
         self.scale.y *= scale.y;
         self.scale.z *= scale.z;
+    }
+
+    // Removes the scaling part
+    pub fn to_isometry(&self) -> Isometry3<f32> {
+        Isometry3::from_parts(Translation::from(self.translation), Unit::new_unchecked(self.rotation))
     }
 
     // Creates a matrix in the form of translation * rotation * scale

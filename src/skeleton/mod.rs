@@ -28,6 +28,56 @@ impl Skeleton {
         }
     }
 
+    pub fn contains_one_root(&self) -> bool {
+        let mut found = false;
+        for parent in &self.tree {
+            if parent.is_none() {
+                if found {
+                    return false;
+                }
+
+                found = true;
+            }
+        }
+
+        true
+    }
+
+    // Returns the first root with no parent
+    pub fn get_root_id(&self) -> Option<usize> {
+        for (i, parent) in self.tree.iter().enumerate() {
+            if parent.is_none() {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    pub fn joint_pose(&self, id: usize) -> Option<Pose> {
+        if id >= self.tree.len() {
+            return None;
+        }
+
+        Some(self.pose[id])
+    }
+
+    pub fn joint_pose_mut(&mut self, id: usize) -> Option<&mut Pose> {
+        if id >= self.tree.len() {
+            return None;
+        }
+
+        Some(&mut self.pose[id])
+    }
+
+    pub fn joint_world_pose(&self, id: usize) -> Option<Pose> {
+        if id >= self.tree.len() {
+            return None;
+        }
+
+        self.world_pose[id]
+    }
+
     pub fn bone_count(&self) -> usize {
         self.tree.len()
     }
@@ -79,7 +129,7 @@ impl Skeleton {
         Ok(())
     } 
 
-    pub fn joint_world_pose(&mut self, joint_id: usize) -> Option<Pose> {
+    pub fn build_joint_world_pose(&mut self, joint_id: usize) -> Option<Pose> {
         if joint_id >= self.tree.len() {
             return None;
         }
@@ -92,7 +142,7 @@ impl Skeleton {
 
         match self.tree[joint_id] {
             Some(parent) => {
-                let parent_pose = self.joint_world_pose(parent)?;
+                let parent_pose = self.build_joint_world_pose(parent)?;
                 pose = parent_pose * pose;
             }
             None => {}
@@ -106,7 +156,7 @@ impl Skeleton {
         self.reset_world_poses();
 
         for i in 0..self.tree.len() {
-            self.joint_world_pose(i);
+            self.build_joint_world_pose(i);
         }
     }
 
@@ -137,6 +187,23 @@ impl Skeleton {
 
         self.inv_bind_pose[joint_id] = Some(pose);
         Some(pose)
+    }
+
+    pub fn poses_from_world_poses(&mut self) -> Result<(), MissingFinalPose> {
+        for i in 0..self.tree.len() {
+            let mut pose = self.world_pose[i].ok_or(MissingFinalPose)?;
+            match self.tree[i] {
+                Some(parent) => {
+                    let parent_pose = self.world_pose[parent].ok_or(MissingFinalPose)?;
+                    pose = parent_pose.inverse() * pose;
+                }
+                None => {}
+            }
+
+            self.pose[i] = pose;
+        }
+
+        Ok(())
     }
 
     pub fn reset_inv_bind_poses(&mut self) {
