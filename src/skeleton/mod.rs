@@ -1,151 +1,155 @@
-pub mod bone;
+pub mod error;
 
-use skeleton::bone::*;
+use self::error::*;
 use pose::*;
+use std::error::Error;
 
-#[derive(Debug)]
+pub type SkeletalPose = Vec<Pose>;
+
 pub struct Skeleton {
-    bones: Vec<Bone>,
+    tree: Vec<Option<usize>>,
+    pose: SkeletalPose,
+    world_pose: Vec<Option<Pose>>,
+    inv_bind_pose: Vec<Option<Pose>>,
 }
 
 impl Skeleton {
-    pub fn bones_ref(&self) -> &[Bone] {
-        self.bones.as_slice()
-    }
+    pub fn from_tree_pose(tree: Vec<Option<usize>>, pose: SkeletalPose) -> Skeleton {
+        assert!(tree.len() == pose.len());
 
-    pub fn bones_mut_ref(&mut self) -> &mut [Bone] {
-        &mut self.bones[..]
-    }
+        let world_pose = vec![None; tree.len()];
+        let inv_bind_pose = vec![None; tree.len()];
 
-    pub fn from_bones(bones: Vec<Bone>) -> Skeleton {
         Skeleton {
-            bones,
+            tree,
+            pose,
+            world_pose,
+            inv_bind_pose
         }
     }
 
     pub fn bone_count(&self) -> usize {
-        self.bones.len()
+        self.tree.len()
     }
 
-    pub fn with_capacity(capacity: usize) -> Skeleton {
-        Skeleton {
-            bones: Vec::with_capacity(capacity),
-        }
+    pub fn tree_ref(&self) -> &[Option<usize>] {
+        self.tree.as_slice()
     }
 
-    pub fn add_bone(&mut self, bone: Bone) {
-        self.bones.push(bone);
+    pub fn pose_ref(&self) -> &[Pose] {
+        self.pose.as_slice()
     }
 
-    pub fn write_matrices_to_buffer(&self, buffer: &mut [[[f32; 4]; 4]]) -> Result<(), MissingFinalPose> {
-        let len = self.bones.len();
-        for i in 0..len {
-            if i >= buffer.len() {
-                break;
-            }
-            buffer[i] = self.bones[i].get_relative_pose().ok_or(MissingFinalPose)?.matrix().into();
-        }
-        Ok(())
+    pub fn pose_ref_mut(&mut self) -> &mut [Pose] {
+        &mut self.pose[..]
     }
 
-    pub fn write_poses_to_buffer(&self, buffer: &mut [Pose]) -> Result<(), MissingFinalPose> {
-        let len = self.bones.len();
-        for i in 0..len {
-            if i >= len {
-                break;
-            }
-            buffer[i] = self.bones[i].get_relative_pose().ok_or(MissingFinalPose)?;
-        }
-
-        Ok(())
+    pub fn world_pose_ref(&self) -> &[Option<Pose>] {
+        self.world_pose.as_slice()
     }
 
-    pub fn reset_inv_bindposes(&mut self) {
-        for bone in self.bones.iter_mut() {
-            bone.inv_pose = None;
-        }
+    pub fn map_world_poses<'a, T, M: 'a + FnMut(Option<Pose>) -> T>(&'a self, mut map: M) -> impl Iterator<Item = T> + 'a {
+        self.world_pose.iter().cloned().map(move |x| map(x))
     }
 
-    // Will set the bindposes of all of the bones to their current transformations
-    pub fn build_inv_bindposes(&mut self) {
-        self.reset_inv_bindposes();
-        
-        for i in 0..self.bones.len() {
-            if self.bones[i].inv_pose.is_none() {
-                let mut bone = self.bones[i];
-                bone.build_inv_pose(&mut self.bones);
-                self.bones[i] = bone;
-            }
-        }
+    pub fn world_poses_to_matrices<'a>(&'a self) -> impl Iterator<Item = Option<[[f32; 4]; 4]>> + 'a {
+        self.world_pose.iter().map(|x| x.map(|x| x.matrix().into()))
     }
 
-    // Will set the bindposes of all of the bones to their current transformations
-    pub fn build_inv_bindposes_from_final(&mut self) {
-        for bone in self.bones.iter_mut() {
-            let inv = bone.final_pose.unwrap().inverse();
-            bone.inv_pose = Some(inv);
-        }
+    pub fn output_poses<'a>(&'a self) -> impl Iterator<Item = Result<Pose, Box<Error>>> + 'a {
+        (0..self.tree.len()).map(move |i| {
+            let world = self.world_pose[i].ok_or(MissingFinalPose)?;
+            let inv = self.inv_bind_pose[i].ok_or(MissingInvBindpose)?;
+
+            Ok(world * inv)
+        })
     }
 
-    pub fn reset_bones(&mut self) {
-        for bone in &mut self.bones {
-            bone.reset();
-        }
+    pub fn output_matrices<'a>(&'a self) -> impl Iterator<Item = Result<[[f32; 4]; 4], Box<Error>>> + 'a {
+        self.output_poses().map(|x| x.map(|x| x.matrix().into()))
     }
 
-    pub fn reset_pose(&mut self) {
-        for bone in &mut self.bones {
-            bone.reset_to_bind();
-        }
-    }
-
-    // Must be called after updating bone transformations
-    pub fn rebuild_poses(&mut self) -> Result<(), MissingInvBindpose> {
-        self.reset_bones();
-        for i in 0..self.bones.len() {
-            if self.bones[i].final_pose.is_some() {
-                continue;
-            }
-            let mut bone = self.bones[i];
-            bone.build_pose(&mut self.bones);
-            self.bones[i] = bone;
+    // Only checks that there is enough poses to fill the inv bind poses
+    pub fn set_inv_bind_pose_iter(&mut self, mut poses: impl Iterator<Item = Pose>) -> Result<(), MissingInvBindpose> {
+        for bp in self.inv_bind_pose.iter_mut() {
+            let pose = poses.next().ok_or(MissingInvBindpose)?;
+            *bp = Some(pose);
         }
 
         Ok(())
+    } 
+
+    pub fn joint_world_pose(&mut self, joint_id: usize) -> Option<Pose> {
+        if joint_id >= self.tree.len() {
+            return None;
+        }
+
+        if let Some(pose) = self.world_pose[joint_id] {
+            return Some(pose);
+        }
+
+        let mut pose = self.pose[joint_id];
+
+        match self.tree[joint_id] {
+            Some(parent) => {
+                let parent_pose = self.joint_world_pose(parent)?;
+                pose = parent_pose * pose;
+            }
+            None => {}
+        }
+
+        self.world_pose[joint_id] = Some(pose);
+        Some(pose)
     }
 
-    // Length of a1 and a2 must be equal to the length of bones
-    pub fn interp_animations(&mut self, a1: &[Pose], a2: &[Pose], t: f32) {
-        assert!(a1.len() == a2.len() && a1.len() == self.bones.len());
+    pub fn build_world_poses(&mut self) {
+        self.reset_world_poses();
 
-        for (i, bone) in self.bones.iter_mut().enumerate() {
-            let pose1 = a1[i];
-            let pose2 = a2[i];
-            let new_pose = pose_interp(&pose1, &pose2, t);
-            bone.pose = new_pose;
+        for i in 0..self.tree.len() {
+            self.joint_world_pose(i);
         }
     }
 
-    pub fn set_poses(&mut self, poses: &[Pose]) {
-        assert!(poses.len() == self.bones.len());
-
-        for i in 0..poses.len() {
-            self.bones[i].pose = poses[i];
+    pub fn reset_world_poses(&mut self) {
+        for pose in self.world_pose.iter_mut() {
+            *pose = None;
         }
     }
 
-    pub fn set_base_pose(&mut self, base: Pose) -> Result<(), MissingFinalPose> {
-        for bone in self.bones.iter_mut() {
-            bone.set_base_pose(base)?;
+    pub fn joint_inv_bind_pose(&mut self, joint_id: usize) -> Option<Pose> {
+        if joint_id >= self.tree.len() {
+            return None;
         }
 
-        Ok(())
+        if let Some(pose) = self.inv_bind_pose[joint_id] {
+            return Some(pose);
+        }
+
+        let mut pose = self.pose[joint_id].inverse();
+
+        match self.tree[joint_id] {
+            Some(parent) => {
+                let parent_pose = self.joint_inv_bind_pose(parent)?;
+                pose = pose * parent_pose;
+            }
+            None => {}
+        }
+
+        self.inv_bind_pose[joint_id] = Some(pose);
+        Some(pose)
     }
-    
-    #[cfg(debug)]
-    pub fn pretty_print(&self) {
-        for (i, bone) in self.bones.iter().enumerate() {
-            println!("Bone {} = {:?}\n", i, bone);
+
+    pub fn reset_inv_bind_poses(&mut self) {
+        for pose in self.inv_bind_pose.iter_mut() {
+            *pose = None;
+        }
+    }
+
+    pub fn build_inv_bind_poses(&mut self) {
+        self.reset_inv_bind_poses();
+
+        for i in 0..self.tree.len() {
+            self.joint_inv_bind_pose(i);
         }
     }
 }
